@@ -18,19 +18,27 @@ def get_stop_idx(cells):
     while i < len(cells) and _re_questionnaire.search(cells[i]['source']) is None: i+=1
     return i
 
-def clean_tags(cell):
+def clean_cell(cell):
     if is_header_cell(cell): return cell
+    hide_input = 'hide_input' in cell["source"]
     for attr in ["id", "caption", "alt", "width", "hide_input", "hide_output", "clean"]:
         cell["source"] = re.sub(r'#\s*' + attr + r'.*?($|\n)', '', cell["source"])
+    rm_execution_count(cell)
+    if not hide_input and len(cell.get('outputs', [])) > 0:
+        clean_cell_output(cell)
+        cell['source'] = []
+    if cell['source'] == ['']: cell['source'] = []
+    cell['metadata'] = {}
     return cell
 
 def proc_nb(fname, dest):
     nb = read_nb(fname)
     i = get_stop_idx(nb['cells'])
-    nb['cells'] = [clean_tags(c) for j,c in enumerate(nb['cells']) if
-                   c['cell_type']=='code' or is_header_cell(c) or is_clean_cell(c) or j >= i]
-    clean_nb(nb, clear_all=True)
-    with open(dest/fname.name, 'w') as f: nbformat.write(nb, f, version=4)
+    nb['cells'] = [clean_cell(c) for j,c in enumerate(nb['cells']) if
+                   (c['cell_type']=='code' or is_header_cell(c) or is_clean_cell(c) or j >= i)
+                   and re.search(r'#\s*hide', c["source"]) is None]
+    nb['metadata'] = {k:v for k,v in nb['metadata'].items() if k in nb_metadata_keep }
+    with open(dest/fname.name, 'w', encoding='utf-8') as f: nbformat.write(nb, f, version=4)
 
 def proc_all(path='.', dest_path='clean'):
     path,dest_path = Path(path),Path(dest_path)
